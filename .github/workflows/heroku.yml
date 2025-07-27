@@ -10,6 +10,8 @@ env:
 jobs:
   provision:
     runs-on: ubuntu-latest
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
     steps:
       - name: Check for required secrets
         run: |
@@ -26,15 +28,11 @@ jobs:
           else
             echo "Heroku app ${{ env.HEROKU_APP_NAME }} already exists."
           fi
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
 
       - name: Add Heroku Postgres (if not attached)
         run: |
           # O comando falhará se o addon já existir, o '|| true' garante que o workflow continue.
           heroku addons:create heroku-postgresql:essential-0 -a ${{ env.HEROKU_APP_NAME }} --wait || true
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
 
       - name: Set Config Vars
         run: |
@@ -64,5 +62,3 @@ jobs:
             KC_HTTP_ENABLED=true \
             KC_HTTP_RELATIVE_PATH=/ \
             -a ${{ env.HEROKU_APP_NAME }}
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
