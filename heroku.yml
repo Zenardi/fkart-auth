@@ -1,0 +1,12 @@
+# Define que o deploy será feito usando um contêiner Docker
+build:
+  docker:
+    web: Dockerfile
+
+# Define como o dyno "web" deve ser executado.
+# O Heroku irá mapear a porta automaticamente.
+# O comando do ENTRYPOINT no Dockerfile será usado.
+run:
+  web:
+    command:
+      - "/opt/keycloak/bin/kc.sh start"

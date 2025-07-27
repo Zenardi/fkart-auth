@@ -1,0 +1,68 @@
+name: Provision Heroku App
+
+# Permite que o workflow seja executado manualmente a partir da aba "Actions"
+on:
+  workflow_dispatch:
+
+env:
+  HEROKU_APP_NAME: fkart-auth
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for required secrets
+        run: |
+          if [ -z "${{ secrets.HEROKU_API_KEY }}" ] || [ -z "${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}" ]; then
+            echo "Error: HEROKU_API_KEY and KEYCLOAK_ADMIN_PASSWORD secrets must be set."
+            exit 1
+          fi
+
+      - name: Create Heroku App (if it does not exist)
+        run: |
+          if ! heroku apps:info --app ${{ env.HEROKU_APP_NAME }}; then
+            echo "Creating Heroku app ${{ env.HEROKU_APP_NAME }}..."
+            heroku create ${{ env.HEROKU_APP_NAME }} --build-stack=container
+          else
+            echo "Heroku app ${{ env.HEROKU_APP_NAME }} already exists."
+          fi
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+
+      - name: Add Heroku Postgres (if not attached)
+        run: |
+          # O comando falhará se o addon já existir, o '|| true' garante que o workflow continue.
+          heroku addons:create heroku-postgresql:essential-0 -a ${{ env.HEROKU_APP_NAME }} --wait || true
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+
+      - name: Set Config Vars
+        run: |
+          echo "Fetching DATABASE_URL..."
+          DB_URL=$(heroku config:get DATABASE_URL -a ${{ env.HEROKU_APP_NAME }})
+
+          if [ -z "$DB_URL" ]; then
+            echo "DATABASE_URL not found. Waiting and retrying..."
+            sleep 15 # Espera o addon terminar de provisionar
+            DB_URL=$(heroku config:get DATABASE_URL -a ${{ env.HEROKU_APP_NAME }})
+          fi
+
+          echo "Parsing DATABASE_URL..."
+          DB_USER=$(echo $DB_URL | awk -F'[:/@]' '{print $4}')
+          DB_PASSWORD=$(echo $DB_URL | awk -F'[:/@]' '{print $5}')
+
+          echo "Setting Keycloak config vars..."
+          heroku config:set \
+            KC_DB_URL_URL="$DB_URL" \
+            KC_DB_USERNAME="$DB_USER" \
+            KC_DB_PASSWORD="$DB_PASSWORD" \
+            KC_DB=postgres \
+            KC_HOSTNAME=${{ env.HEROKU_APP_NAME }}.herokuapp.com \
+            KEYCLOAK_ADMIN=admin \
+            KEYCLOAK_ADMIN_PASSWORD='${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}' \
+            KC_PROXY=edge \
+            KC_HTTP_ENABLED=true \
+            KC_HTTP_RELATIVE_PATH=/ \
+            -a ${{ env.HEROKU_APP_NAME }}
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
